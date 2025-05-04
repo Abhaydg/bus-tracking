@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bus Tracking System</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    #map, #routeMap {
+      height: 300px;
+    }
+    .seat {
+      cursor: pointer;
+    }
+    .seat.selected {
+      background-color: #2563eb !important;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body class="bg-blue-50 text-gray-800">
+
+<!-- LOGIN PAGE -->
+<div id="loginPage" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-white">
+  <div class="bg-white p-8 rounded-xl shadow-xl w-full max-w-md">
+    <h2 class="text-2xl font-bold mb-6 text-blue-600 text-center">Login to Bus System</h2>
+    <input type="text" id="username" placeholder="Username" class="w-full mb-4 p-2 border rounded"/>
+    <input type="password" id="password" placeholder="Password" class="w-full mb-4 p-2 border rounded"/>
+    <button onclick="login()" class="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700 transition">Login</button>
+  </div>
+</div>
+
+<!-- MAIN SYSTEM -->
+<div id="app" class="hidden p-4 container mx-auto space-y-6">
+  <h1 class="text-4xl text-center font-extrabold text-blue-700">🚌 Real-Time Bus Tracking System</h1>
+
+  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Ticket Booking -->
+    <div class="bg-white p-5 rounded-xl shadow-md">
+      <h2 class="text-xl font-bold text-blue-600 mb-3">🎟 Book Ticket</h2>
+      <input type="text" id="destination" placeholder="Enter Destination" class="w-full p-2 mb-3 border rounded"/>
+      <input type="time" id="bookTime" class="w-full p-2 mb-3 border rounded"/>
+      <button onclick="bookTicket()" class="bg-blue-500 hover:bg-blue-600 text-white w-full p-2 rounded">Book Ticket</button>
+    </div>
+
+    <!-- Time Table -->
+    <div class="bg-white p-5 rounded-xl shadow-md">
+      <h2 class="text-xl font-bold text-indigo-600 mb-4">🕐 Bus Time Table</h2>
+      <ul id="timetable" class="space-y-2 text-gray-700">
+        <!-- Stops will load here -->
+      </ul>
+    </div>
+
+    <!-- Real-Time Location -->
+    <div class="bg-white p-5 rounded-xl shadow-md">
+      <h2 class="text-xl font-bold text-green-600 mb-3">📍 Real-Time Bus Location</h2>
+      <div id="map" class="rounded"></div>
+    </div>
+
+    <!-- Seat Availability -->
+    <div class="bg-white p-5 rounded-xl shadow-md">
+      <h2 class="text-xl font-bold text-yellow-600 mb-3">💺 Seat Availability</h2>
+      <div id="seats" class="grid grid-cols-4 gap-2 text-white font-medium">
+        <!-- Seats rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Ticket & QR -->
+    <div class="bg-white p-5 rounded-xl shadow-md">
+      <h2 class="text-xl font-bold text-pink-600 mb-3">🎫 Ticket & QR</h2>
+      <div class="text-sm mb-3 space-y-1">
+        <p><strong>Name:</strong> <span id="userName" class="text-blue-600">-</span></p>
+        <p><strong>Seat:</strong> <span id="seat-display" class="text-green-600">-</span></p>
+        <p><strong>Time:</strong> <span id="displayTime" class="text-purple-600">-</span></p>
+        <p><strong>Destination:</strong> <span id="displayDest" class="text-indigo-600">-</span></p>
+      </div>
+      <canvas id="qrcode" class="mx-auto"></canvas>
+    </div>
+
+    <!-- Route Mapping -->
+    <div class="bg-white p-5 rounded-xl shadow-md">
+      <h2 class="text-xl font-bold text-red-600 mb-3">🗺 Visualize Route</h2>
+      <div id="routeMap" class="rounded"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script>
+  const dummyStops = [
+    { stop: "Stop 1", time: "08:00 AM", coords: [28.6139, 77.209] },
+    { stop: "Stop 2", time: "08:15 AM", coords: [28.6239, 77.215] },
+    { stop: "Stop 3", time: "08:30 AM", coords: [28.6339, 77.220] }
+  ];
+  const dummyBusLocation = [28.6239, 77.215];
+
+  function login() {
+    const user = document.getElementById("username").value;
+    const pass = document.getElementById("password").value;
+    if (user && pass) {
+      document.getElementById("loginPage").classList.add("hidden");
+      document.getElementById("app").classList.remove("hidden");
+      document.getElementById("userName").textContent = user;
+    }
+  }
+
+  function renderTimeTable() {
+    const container = document.getElementById("timetable");
+    container.innerHTML = '';
+    dummyStops.forEach(stop => {
+      const li = document.createElement("li");
+      li.className = "flex justify-between items-center bg-indigo-50 p-2 rounded";
+      li.innerHTML = `🚏 ${stop.stop} <span class="font-semibold text-gray-600">${stop.time}</span>`;
+      container.appendChild(li);
+    });
+  }
+
+  function setupMap() {
+    const map = L.map('map').setView(dummyBusLocation, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.marker(dummyBusLocation).addTo(map).bindPopup("🚌 Bus is here").openPopup();
+
+    const routeMap = L.map('routeMap').setView(dummyBusLocation, 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(routeMap);
+    dummyStops.forEach(stop => {
+      L.marker(stop.coords).addTo(routeMap).bindPopup(`🛑 ${stop.stop}`);
+    });
+  }
+
+  function setupSeats() {
+    const container = document.getElementById("seats");
+    container.innerHTML = '';
+    const totalSeats = 16;
+    const occupied = [3, 7, 10];
+    for (let i = 1; i <= totalSeats; i++) {
+      const seat = document.createElement("div");
+      seat.className = `seat text-center p-2 rounded cursor-pointer transition ${occupied.includes(i) ? 'bg-red-400 pointer-events-none' : 'bg-green-500 hover:bg-green-600'}`;
+      seat.textContent = `Seat ${i}`;
+      seat.dataset.seat = i;
+      if (!occupied.includes(i)) {
+        seat.onclick = () => {
+          document.querySelectorAll(".seat").forEach(s => s.classList.remove("selected"));
+          seat.classList.add("selected");
+          document.getElementById("seat-display").textContent = i;
+        };
+      }
+      container.appendChild(seat);
+    }
+  }
+
+  function bookTicket() {
+    const dest = document.getElementById("destination").value;
+    const time = document.getElementById("bookTime").value;
+    const seat = document.querySelector(".seat.selected")?.dataset.seat;
+    const user = document.getElementById("userName").textContent;
+
+    if (!dest || !time || !seat) {
+      alert("Please fill all booking details and select a seat!");
+      return;
+    }
+
+    document.getElementById("displayDest").textContent = dest;
+    document.getElementById("displayTime").textContent = time;
+
+    const ticket = {
+      name: user,
+      destination: dest,
+      time: time,
+      seat: seat
+    };
+
+    QRCode.toCanvas(document.getElementById("qrcode"), JSON.stringify(ticket), err => {
+      if (err) console.error(err);
+    });
+  }
+
+  window.onload = function () {
+    renderTimeTable();
+    setupMap();
+    setupSeats();
+  };
+</script>
+</body>
+</html>
